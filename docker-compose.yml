@@ -1,0 +1,9 @@
+version: '3'
+
+services:
+  rust-lexer:
+    image: rust-lexer:latest
+    build: .
+    volumes:
+      - ./:/app/
+
