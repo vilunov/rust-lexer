@@ -3,3 +3,5 @@ name = "rust-lexer"
 version = "0.1.0"
 authors = ["Nikita Vilunov <nikitaoryol@gmail.com>", "Nikolay Gaivoronskiy"]
 
+[dependencies]
+regex = "1.0.5"
