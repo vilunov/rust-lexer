@@ -68,29 +68,28 @@ pub enum Token {
 /// # Panics
 ///
 /// When the tokenizer encounters an unexpected character
-pub fn tokenize<S>(mut stream: S) -> Vec<Token>
+pub fn tokenize<S>(stream: S) -> Vec<Token>
     where S: Iterator<Item=char> {
 
     use self::Token::*;
     use self::BinaryOperator::*;
 
+    let mut stream = stream.peekable();
     let mut output = vec![];
-    let mut current_char = stream.next();
 
-    while let Some(c) = current_char {
+    while let Some(&c) = stream.peek() {
         match c {
             _ if c.is_ascii_digit() => {
-                // Skip all digits, we don't store the value anyway
-                while let Some(c2) = current_char {
-                    if !c2.is_ascii_digit() { break; }
-
-                    current_char = stream.next();
-                }
                 output.push(LiteralInt);
+                // Skip all digits, we don't store the value anyway
+                while let Some(&c2) = stream.peek() {
+                    if !c2.is_ascii_digit() { break; }
+                    stream.next();
+                }
             }
             '+' => {
                 output.push(BinaryOperator(Plus));
-                current_char = stream.next();
+                stream.next();
             }
             _ => panic!("Unexpected character {}", c)
         }
