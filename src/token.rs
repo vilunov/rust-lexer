@@ -46,6 +46,28 @@ pub enum Token {
     Right(PairedToken),
     /// Delimiting whitespace
     Whitespace,
+    /// `=`
+    Equal,
+    /// `==`
+    DoubleEqual,
+    /// `<`
+    LessThan,
+    /// `<=`
+    LessEqual,
+    /// `>`
+    GreaterThan,
+    /// `>=`
+    GreaterEqual,
+    /// `!=`
+    NotEqual,
+    /// `&&`
+    DoubleAnd,
+    /// `||`
+    DoubleOr,
+    /// `!`
+    Not,
+    /// `~`
+    Tilde,
 
     // Operators
     /// Binary operator, e.g. `+`
@@ -60,7 +82,21 @@ pub enum Token {
     Identifier,
 
     /// End of stream
-    Eof
+    Eof,
+}
+
+fn char_to_binop(c: char) -> Option<BinaryOperator> {
+    match c {
+        '+' => Some(BinaryOperator::Plus),
+        '-' => Some(BinaryOperator::Minus),
+        '*' => Some(BinaryOperator::Star),
+        '/' => Some(BinaryOperator::Slash),
+        '%' => Some(BinaryOperator::Percent),
+        '^' => Some(BinaryOperator::Caret),
+        '&' => Some(BinaryOperator::And),
+        '|' => Some(BinaryOperator::Or),
+        _ => None,
+    }
 }
 
 /// Tokenize the stream of incoming source code
@@ -69,10 +105,11 @@ pub enum Token {
 ///
 /// When the tokenizer encounters an unexpected character
 pub fn tokenize<S>(stream: S) -> Vec<Token>
-    where S: Iterator<Item=char> {
-
-    use self::Token::*;
+where
+    S: Iterator<Item = char>,
+{
     use self::BinaryOperator::*;
+    use self::Token::*;
 
     let mut stream = stream.peekable();
     let mut output = vec![];
@@ -83,15 +120,80 @@ pub fn tokenize<S>(stream: S) -> Vec<Token>
                 output.push(LiteralInt);
                 // Skip all digits, we don't store the value anyway
                 while let Some(&c2) = stream.peek() {
-                    if !c2.is_ascii_digit() { break; }
+                    if !c2.is_ascii_digit() {
+                        break;
+                    }
                     stream.next();
                 }
             }
-            '+' => {
-                output.push(BinaryOperator(Plus));
+            _ if char_to_binop(c).eq(Some(binop)) => {
                 stream.next();
+                match stream.peek() {
+                    Some('=') => {
+                        output.push(BinaryOperatorAssignment(binop));
+                        stream.next();
+                    }
+                    _ => {
+                        output.push(BinaryOperator(binop));
+                    }
+                }
             }
-            _ => panic!("Unexpected character {}", c)
+            '<' => {
+                stream.next();
+                if stream.peek().eq(Some(second_char)){
+                    match second_char {
+                        '=' => {
+                            output.push(LessEqual);
+                            stream.next();
+                        }
+                        '<' => {
+                            stream.next();
+                            if stream.peek().eq(Some('=')){
+                                output.push(BinaryOperatorAssignment(Shl));
+                                stream.next();
+                            }
+                            else{
+                                output.push(BinaryOperator(Shl));
+                            }
+                        }
+                        _ => {
+                            output.push(LessThan);
+                        }
+                    }
+                }
+                else{
+                    output.push(LessThan);
+                }
+            }
+            '>' => {
+                stream.next();
+                if stream.peek().eq(Some(second_char)){
+                    match second_char {
+                        '=' => {
+                            output.push(GreaterEqual);
+                            stream.next();
+                        }
+                        '>' => {
+                            stream.next();
+                            if stream.peek().eq(Some('=')){
+                                output.push(BinaryOperatorAssignment(Shr));
+                                stream.next();
+                            }
+                                else{
+                                    output.push(BinaryOperator(Shr));
+                                }
+                        }
+                        _ => {
+                            output.push(GreaterThan);
+                        }
+                    }
+                }
+                else{
+                    output.push(GreaterThan);
+                }
+            }
+
+            _ => panic!("Unexpected character {}", c),
         }
     }
     output.push(Eof);
