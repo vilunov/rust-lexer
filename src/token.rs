@@ -46,8 +46,34 @@ pub enum Token {
     Right(PairedToken),
     /// Delimiting whitespace
     Whitespace,
+    /// Comments (including docs)
+    Comment,
     /// `=`
     Equal,
+
+    // Language structural tokens
+    /// `,`
+    Comma,
+    /// `:`
+    Colon,
+    /// `::`
+    DoubleColon,
+    /// `;`
+    Semicolon,
+    /// `!`
+    Exclamation,
+
+    // Operators
+    /// Binary operator, e.g. `+`
+    BinaryOperator(BinaryOperator),
+    /// Binary operator with assignment, e.g. `+=`
+    BinaryOperatorAssignment(BinaryOperator),
+    // Unary operators
+    /// `!`
+    Not,
+    /// `~`
+    Tilde,
+    // Boolean and comparison operators
     /// `==`
     DoubleEqual,
     /// `<`
@@ -64,16 +90,8 @@ pub enum Token {
     DoubleAnd,
     /// `||`
     DoubleOr,
-    /// `!`
-    Not,
-    /// `~`
-    Tilde,
-
-    // Operators
-    /// Binary operator, e.g. `+`
-    BinaryOperator(BinaryOperator),
-    /// Binary operator with assignment, e.g. `+=`
-    BinaryOperatorAssignment(BinaryOperator),
+    /// `#`
+    Sharp,
 
     // Literals
     LiteralInt,
@@ -90,7 +108,7 @@ fn char_to_binop(c: char) -> Option<BinaryOperator> {
         '+' => Some(BinaryOperator::Plus),
         '-' => Some(BinaryOperator::Minus),
         '*' => Some(BinaryOperator::Star),
-        '/' => Some(BinaryOperator::Slash),
+        // '/' => Some(BinaryOperator::Slash), // Handled as a special case
         '%' => Some(BinaryOperator::Percent),
         '^' => Some(BinaryOperator::Caret),
         '&' => Some(BinaryOperator::And),
@@ -109,35 +127,87 @@ where
     S: Iterator<Item = char>,
 {
     use self::BinaryOperator::*;
+    use self::PairedToken::*;
     use self::Token::*;
 
     let mut stream = stream.peekable();
     let mut output = vec![];
+
+    macro_rules! consume {
+        ($token: expr) => {{
+            stream.next();
+            output.push($token);
+        }};
+    }
 
     while let Some(&c) = stream.peek() {
         // === Binary operators ===
         if let Some(binop) = char_to_binop(c) {
             stream.next();
             match stream.peek() {
-                Some('=') => {
-                    output.push(BinaryOperatorAssignment(binop));
-                    stream.next();
-                }
-                _ => {
-                    output.push(BinaryOperator(binop));
-                }
+                Some('=') => consume!(BinaryOperatorAssignment(binop)),
+                _ => output.push(BinaryOperator(binop)),
             }
             continue;
         }
         // === Numerical literals ===
         if c.is_ascii_digit() {
             output.push(LiteralInt);
-            while let Some(_) = stream.peek().filter(|i| i.is_ascii_digit()) {
+            while stream.peek().filter(|i| i.is_ascii_digit()).is_some() {
                 stream.next();
             }
             continue;
         }
         match c {
+            // === Identifiers ===
+            _ if c.is_ascii_alphabetic() || c == '_' => {
+                consume!(Identifier);
+                while stream
+                    .peek()
+                    .filter(|&&i| i.is_ascii_alphanumeric() || i == '_')
+                    .is_some()
+                {
+                    stream.next();
+                }
+            }
+            // === Special case for binary operator / ===
+            //     Needed to handle comments
+            '/' => {
+                stream.next();
+                match stream.peek() {
+                    Some('=') => consume!(BinaryOperatorAssignment(Slash)),
+                    Some('/') => {
+                        while stream.peek().filter(|&&i| i != '\n').is_some() {
+                            stream.next();
+                        }
+                        output.push(Comment);
+                    }
+                    _ => output.push(BinaryOperator(Slash)),
+                }
+            }
+            // === Structurals ===
+            ',' => consume!(Comma),
+            ';' => consume!(Semicolon),
+            '(' => consume!(Left(Parenthesis)),
+            ')' => consume!(Right(Parenthesis)),
+            '{' => consume!(Left(Brace)),
+            '}' => consume!(Right(Brace)),
+            '[' => consume!(Left(Bracket)),
+            ']' => consume!(Right(Bracket)),
+            '!' => consume!(Exclamation),
+            '#' => consume!(Sharp),
+            ':' => {
+                stream.next();
+                match stream.peek() {
+                    Some(':') => consume!(DoubleColon),
+                    _ => {
+                        output.push(Colon);
+                    }
+                }
+                output.push(Comma);
+            }
+            // === Paired tokens ===
+
             // === String literals ===
             // TODO character escaping and other types of literals
             '\"' => {
@@ -153,15 +223,11 @@ where
                 stream.next();
                 if let Some(&second_char) = stream.peek() {
                     match second_char {
-                        '=' => {
-                            output.push(LessEqual);
-                            stream.next();
-                        }
+                        '=' => consume!(LessEqual),
                         '<' => {
                             stream.next();
                             if stream.peek() == Some(&'=') {
-                                output.push(BinaryOperatorAssignment(Shl));
-                                stream.next();
+                                consume!(BinaryOperatorAssignment(Shl));
                             } else {
                                 output.push(BinaryOperator(Shl));
                             }
@@ -178,15 +244,11 @@ where
                 stream.next();
                 if let Some(&second_char) = stream.peek() {
                     match second_char {
-                        '=' => {
-                            output.push(GreaterEqual);
-                            stream.next();
-                        }
+                        '=' => consume!(GreaterEqual),
                         '>' => {
                             stream.next();
                             if stream.peek() == Some(&'=') {
-                                output.push(BinaryOperatorAssignment(Shr));
-                                stream.next();
+                                consume!(BinaryOperatorAssignment(Shr))
                             } else {
                                 output.push(BinaryOperator(Shr));
                             }
@@ -202,18 +264,15 @@ where
             '=' => {
                 stream.next();
                 match stream.peek() {
-                    Some('=') => {
-                        output.push(DoubleEqual);
-                        stream.next();
-                    }
-                    _ => {
-                        output.push(Equal);
-                    }
+                    Some('=') => consume!(DoubleEqual),
+                    _ => output.push(Equal),
                 }
             }
-            ' ' | '\n' => {
-                output.push(Whitespace);
-                stream.next();
+            ' ' | '\n' if c.is_ascii_whitespace() => {
+                consume!(Whitespace);
+                while stream.peek().filter(|i| i.is_ascii_whitespace()).is_some() {
+                    stream.next();
+                }
             }
 
             _ => panic!("Unexpected character {}", c),

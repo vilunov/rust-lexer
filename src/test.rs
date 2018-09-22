@@ -36,6 +36,20 @@ const TESTS: &[TestCase] = &[
             Eof,
         ],
     ),
+    TestCase(
+        "2+2//сложение чисел\n3+=3",
+        &[
+            LiteralInt,
+            BinaryOperator(Plus),
+            LiteralInt,
+            Comment,
+            Whitespace,
+            LiteralInt,
+            BinaryOperatorAssignment(Plus),
+            LiteralInt,
+            Eof,
+        ],
+    ),
 ];
 
 #[test]
@@ -58,6 +72,7 @@ fn _test_self() {
     {
         println!("Tokenizing file {:?}", entry);
         let contents = read_to_string(entry).unwrap();
-        let _ = tokenize(contents.chars());
+        let tokens = tokenize(contents.chars());
+        println!("Tokenized into: {:#?}", tokens);
     }
 }
