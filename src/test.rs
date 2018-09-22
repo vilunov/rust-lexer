@@ -25,8 +25,15 @@ const TESTS: &[TestCase] = &[
     ),
     TestCase(
         "- = -=",
-        &[BinaryOperator(Minus), Whitespace, Equal, Whitespace, BinaryOperatorAssignment(Minus), Eof],
-    )
+        &[
+            BinaryOperator(Minus),
+            Whitespace,
+            Equal,
+            Whitespace,
+            BinaryOperatorAssignment(Minus),
+            Eof,
+        ],
+    ),
 ];
 
 #[test]
@@ -35,5 +42,20 @@ fn t1() {
         let tokens = tokenize(input.chars());
         assert_eq!(tokens, *output);
         println!("Expression {} tokenized successfully!", input);
+    }
+}
+
+//#[test] //TODO uncomment when complete
+fn _test_self() {
+    use std::fs::{read_dir, read_to_string};
+    for entry in read_dir("src")
+        .unwrap()
+        .map(|i| i.unwrap().path())
+        .filter(|i| i.is_file())
+        .filter(|i| i.extension().and_then(|i| i.to_str()) == Some("rs"))
+    {
+        println!("Tokenizing file {:?}", entry);
+        let contents = read_to_string(entry).unwrap();
+        let _ = tokenize(contents.chars());
     }
 }
