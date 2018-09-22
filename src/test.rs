@@ -23,6 +23,10 @@ const TESTS: &[TestCase] = &[
         "\"This is a bucket!\"+\"Dear god\"",
         &[LiteralStr, BinaryOperator(Plus), LiteralStr, Eof],
     ),
+    TestCase(
+        "- = -=",
+        &[BinaryOperator(Minus), Whitespace, Equal, Whitespace, BinaryOperatorAssignment(Minus), Eof],
+    )
 ];
 
 #[test]

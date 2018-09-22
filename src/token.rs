@@ -143,7 +143,6 @@ where
             '\"' => {
                 output.push(LiteralStr);
                 stream.next();
-                println!("{}", c);
                 while stream.peek() != Some(&'\"') {
                     stream.next();
                 }
@@ -199,6 +198,14 @@ where
                 } else {
                     output.push(GreaterThan);
                 }
+            }
+            '=' => {
+                output.push(Equal);
+                stream.next();
+            }
+            ' ' | '\n' => {
+                output.push(Whitespace);
+                stream.next();
             }
 
             _ => panic!("Unexpected character {}", c),
