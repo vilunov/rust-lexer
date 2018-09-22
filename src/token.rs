@@ -68,7 +68,7 @@ pub enum Token {
     Question,
     /// `$`
     Dollar,
-    /// `'`, used for lifetimes, not chars
+    /// `'`, used for lifetimes, not chars.
     /// This token should never occur, lifetimes use `IdentifierLifetime`
     Quote,
     /// `#`
@@ -85,7 +85,7 @@ pub enum Token {
     DotDot,
     /// `...`
     DotDotDot,
-    /// `.=`
+    /// `.=`.
     /// This token should never occur, it is used for macro purposes in rustc
     DotEq,
     /// `..=`
@@ -162,12 +162,36 @@ fn is_ident_char(c: &&char) -> bool {
 }
 
 /// Tries to read a char from the stream as it would be in literals
-/// Handles escaped characters
-fn read_char<S>(stream: &Peekable<S>) -> Option<()>
+///
+/// Returns true if succeeded in reading a char
+fn read_char<S>(stream: &mut Peekable<S>, delimiter: char) -> bool
 where
     S: Iterator<Item = char>,
 {
-    None
+    let val = match stream.peek() {
+        Some(&c) if (c == '\t' || c == '\r' || c == '\n' || c == '\'') && delimiter == '\'' => {
+            false
+        }
+        Some('\r') => {
+            stream.next();
+            stream.peek() == Some(&'\n')
+        }
+        Some('\\') => {
+            stream.next();
+            let char = match stream.peek() {
+                Some(c) => c,
+                None => return false,
+            };
+            match char {
+                'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' => true,
+                _ => false,
+            }
+        }
+        Some(_) => true,
+        None => false,
+    };
+    stream.next();
+    val
 }
 
 /// Tokenize the stream of incoming source code
@@ -211,6 +235,7 @@ where
             continue;
         }
         // === Numerical literals ===
+        // TODO floats; _; types - u8, f64, etc
         if c.is_ascii_digit() {
             output.push(LiteralInt);
             skip_while!(|i| i.is_ascii_digit());
@@ -228,6 +253,17 @@ where
                 stream.next();
                 match stream.peek() {
                     Some('=') => consume!(BinaryOperatorAssignment(Slash)),
+                    Some('*') => {
+                        consume!(Comment);
+                        while let Some(_) = stream.peek() {
+                            skip_while!(|&&i| i != '*');
+                            stream.next();
+                            if let Some(&'/') = stream.peek() {
+                                stream.next();
+                                break;
+                            }
+                        }
+                    }
                     Some('/') => {
                         skip_while!(|&&i| i != '\n');
                         output.push(Comment);
@@ -250,7 +286,6 @@ where
             '!' => consume!(Exclamation),
             '?' => consume!(Question),
             '$' => consume!(Dollar),
-            '\'' => consume!(Quote), // TODO char parsing
             '#' => consume!(Sharp),
             ':' => {
                 stream.next();
@@ -274,6 +309,38 @@ where
                     _ => output.push(Dot),
                 }
             }
+            // === Lifetimes and character literas ===
+            '\'' => {
+                stream.next();
+                match stream.peek() {
+                    // At this point we check whether the first symbol could be the start of lifetime
+                    Some(&c) if is_ident_start(c) => {
+                        stream.next();
+                        match stream.peek().cloned() {
+                            // If it is and the next symbol is a single quote, then it is a char literal
+                            Some('\'') => consume!(LiteralChar),
+                            // If it's not, then it is a lifetime identifier
+                            Some(c2) if is_ident_char(&&c2) => {
+                                skip_while!(is_ident_char);
+                                // Lifetimes can't have a closing quote at the end
+                                // The user could mistakenly try to create a char literal with multiple codepoints
+                                assert_ne!(
+                                    stream.peek(),
+                                    Some(&'\''),
+                                    "Char literal must have at most one codepoint"
+                                );
+                                output.push(IdentifierLifetime)
+                            }
+                            _ => output.push(IdentifierLifetime),
+                        }
+                    }
+                    Some('\'') => panic!("You can't simply put two single quotes in a row"),
+                    // The character is not the start of a lifetime identifier, it is a char literal
+                    Some(_) => assert!(read_char(&mut stream, '\'')),
+                    Some(_) => assert!(read_char(&mut stream, '\'')),
+                    None => panic!("EOF after opening quote"),
+                }
+            }
             // === Paired tokens ===
             '(' => consume!(Left(Parenthesis)),
             ')' => consume!(Right(Parenthesis)),
@@ -282,10 +349,12 @@ where
             '[' => consume!(Left(Bracket)),
             ']' => consume!(Right(Bracket)),
             // === String literals ===
-            // TODO character escaping and other types of literals
+            // TODO other types of literals
             '\"' => {
                 consume!(LiteralStr);
-                skip_while!(|&&i| i != '\"');
+                while stream.peek() != Some(&'"') {
+                    assert!(read_char(&mut stream, '"'));
+                }
                 stream.next();
             }
             // === Comparison operators ===
