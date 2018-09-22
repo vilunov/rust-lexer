@@ -139,6 +139,13 @@ where
             output.push($token);
         }};
     }
+    macro_rules! skip_while {
+        ($predicate: expr) => {
+            while stream.peek().filter($predicate).is_some() {
+                stream.next();
+            }
+        };
+    }
 
     while let Some(&c) = stream.peek() {
         // === Binary operators ===
@@ -153,22 +160,14 @@ where
         // === Numerical literals ===
         if c.is_ascii_digit() {
             output.push(LiteralInt);
-            while stream.peek().filter(|i| i.is_ascii_digit()).is_some() {
-                stream.next();
-            }
+            skip_while!(|i| i.is_ascii_digit());
             continue;
         }
         match c {
             // === Identifiers ===
             _ if c.is_ascii_alphabetic() || c == '_' => {
                 consume!(Identifier);
-                while stream
-                    .peek()
-                    .filter(|&&i| i.is_ascii_alphanumeric() || i == '_')
-                    .is_some()
-                {
-                    stream.next();
-                }
+                skip_while!(|&&i| i.is_ascii_alphanumeric() || i == '_');
             }
             // === Special case for binary operator / ===
             //     Needed to handle comments
@@ -177,9 +176,7 @@ where
                 match stream.peek() {
                     Some('=') => consume!(BinaryOperatorAssignment(Slash)),
                     Some('/') => {
-                        while stream.peek().filter(|&&i| i != '\n').is_some() {
-                            stream.next();
-                        }
+                        skip_while!(|&&i| i != '\n');
                         output.push(Comment);
                     }
                     _ => output.push(BinaryOperator(Slash)),
@@ -188,34 +185,28 @@ where
             // === Structurals ===
             ',' => consume!(Comma),
             ';' => consume!(Semicolon),
-            '(' => consume!(Left(Parenthesis)),
-            ')' => consume!(Right(Parenthesis)),
-            '{' => consume!(Left(Brace)),
-            '}' => consume!(Right(Brace)),
-            '[' => consume!(Left(Bracket)),
-            ']' => consume!(Right(Bracket)),
             '!' => consume!(Exclamation),
             '#' => consume!(Sharp),
             ':' => {
                 stream.next();
                 match stream.peek() {
                     Some(':') => consume!(DoubleColon),
-                    _ => {
-                        output.push(Colon);
-                    }
+                    _ => output.push(Colon),
                 }
-                output.push(Comma);
             }
             // === Paired tokens ===
-
+            '(' => consume!(Left(Parenthesis)),
+            ')' => consume!(Right(Parenthesis)),
+            '{' => consume!(Left(Brace)),
+            '}' => consume!(Right(Brace)),
+            '[' => consume!(Left(Bracket)),
+            ']' => consume!(Right(Bracket)),
             // === String literals ===
             // TODO character escaping and other types of literals
             '\"' => {
                 output.push(LiteralStr);
                 stream.next();
-                while stream.peek() != Some(&'\"') {
-                    stream.next();
-                }
+                skip_while!(|&&i| i != '\"');
                 stream.next();
             }
             // === Comparison operators ===
@@ -270,9 +261,7 @@ where
             }
             ' ' | '\n' if c.is_ascii_whitespace() => {
                 consume!(Whitespace);
-                while stream.peek().filter(|i| i.is_ascii_whitespace()).is_some() {
-                    stream.next();
-                }
+                skip_while!(|i| i.is_ascii_whitespace());
             }
 
             _ => panic!("Unexpected character {}", c),
