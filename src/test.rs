@@ -24,13 +24,15 @@ const TESTS: &[TestCase] = &[
         &[LiteralStr, BinaryOperator(Plus), LiteralStr, Eof],
     ),
     TestCase(
-        "- = -=",
+        "- = -====",
         &[
             BinaryOperator(Minus),
             Whitespace,
             Equal,
             Whitespace,
             BinaryOperatorAssignment(Minus),
+            DoubleEqual,
+            Equal,
             Eof,
         ],
     ),

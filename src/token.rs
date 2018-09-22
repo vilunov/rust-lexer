@@ -200,8 +200,16 @@ where
                 }
             }
             '=' => {
-                output.push(Equal);
                 stream.next();
+                match stream.peek() {
+                    Some('=') => {
+                        output.push(DoubleEqual);
+                        stream.next();
+                    }
+                    _ => {
+                        output.push(Equal);
+                    }
+                }
             }
             ' ' | '\n' => {
                 output.push(Whitespace);
