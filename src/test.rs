@@ -111,3 +111,8 @@ fn test_on_folder(folder_name: &str) {
 fn test_self() {
     test_on_folder("src");
 }
+
+#[test]
+fn test_rustc() {
+    test_on_folder("test");
+}
