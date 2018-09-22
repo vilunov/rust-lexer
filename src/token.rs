@@ -1,3 +1,5 @@
+use std::iter::Peekable;
+
 /// Token which is usually paired with another token, i.e. is either left or right
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum PairedToken {
@@ -62,6 +64,32 @@ pub enum Token {
     Semicolon,
     /// `!`
     Exclamation,
+    /// `?`
+    Question,
+    /// `$`
+    Dollar,
+    /// `'`, used for lifetimes, not chars
+    /// This token should never occur, lifetimes use `IdentifierLifetime`
+    Quote,
+    /// `#`
+    Sharp,
+    /// `<-`
+    LeftArrow,
+    /// `->`
+    RightArrow,
+    /// `=>`
+    FatArrow,
+    /// `.`
+    Dot,
+    /// `..`
+    DotDot,
+    /// `...`
+    DotDotDot,
+    /// `.=`
+    /// This token should never occur, it is used for macro purposes in rustc
+    DotEq,
+    /// `..=`
+    DotDotEq,
 
     // Operators
     /// Binary operator, e.g. `+`
@@ -90,31 +118,56 @@ pub enum Token {
     DoubleAnd,
     /// `||`
     DoubleOr,
-    /// `#`
-    Sharp,
 
     // Literals
     LiteralInt,
     LiteralStr,
+    LiteralChar,
 
     Identifier,
+    IdentifierLifetime,
 
     /// End of stream
     Eof,
 }
 
+/// Try to convert a char into a binary operator
+/// This function does not output binary operators which are handled by special cases.
 fn char_to_binop(c: char) -> Option<BinaryOperator> {
     match c {
         '+' => Some(BinaryOperator::Plus),
-        '-' => Some(BinaryOperator::Minus),
+        // '-' => Some(BinaryOperator::Minus), // Handled as a special case due to arrows
         '*' => Some(BinaryOperator::Star),
-        // '/' => Some(BinaryOperator::Slash), // Handled as a special case
+        // '/' => Some(BinaryOperator::Slash), // Handled as a special case due to comments
         '%' => Some(BinaryOperator::Percent),
         '^' => Some(BinaryOperator::Caret),
         '&' => Some(BinaryOperator::And),
         '|' => Some(BinaryOperator::Or),
         _ => None,
     }
+}
+
+/// This character is eligible to be identifier's first char
+/// https://github.com/rust-lang/rust/blob/af50e3822c4ceda60445c4a2adbb3bfa480ebd39/src/libsyntax/parse/lexer/mod.rs#L1809
+fn is_ident_start(c: char) -> bool {
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+    // || (c > '\x7f' && c.is_xid_start())
+}
+
+/// This character is eligible to be identifier's non-first char
+fn is_ident_char(c: &&char) -> bool {
+    let c = **c;
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+    // || (c > '\x7f' && c.is_xid_continue())
+}
+
+/// Tries to read a char from the stream as it would be in literals
+/// Handles escaped characters
+fn read_char<S>(stream: &Peekable<S>) -> Option<()>
+where
+    S: Iterator<Item = char>,
+{
+    None
 }
 
 /// Tokenize the stream of incoming source code
@@ -165,12 +218,12 @@ where
         }
         match c {
             // === Identifiers ===
-            _ if c.is_ascii_alphabetic() || c == '_' => {
+            _ if is_ident_start(c) => {
                 consume!(Identifier);
-                skip_while!(|&&i| i.is_ascii_alphanumeric() || i == '_');
+                skip_while!(is_ident_char);
             }
-            // === Special case for binary operator / ===
-            //     Needed to handle comments
+            // === Special case for operators ===
+            // --- Needed to handle comments
             '/' => {
                 stream.next();
                 match stream.peek() {
@@ -182,16 +235,43 @@ where
                     _ => output.push(BinaryOperator(Slash)),
                 }
             }
+            // --- Needed to handle right arrows
+            '-' => {
+                stream.next();
+                match stream.peek() {
+                    Some('=') => consume!(BinaryOperatorAssignment(Minus)),
+                    Some('>') => consume!(RightArrow),
+                    _ => output.push(BinaryOperator(Minus)),
+                }
+            }
             // === Structurals ===
             ',' => consume!(Comma),
             ';' => consume!(Semicolon),
             '!' => consume!(Exclamation),
+            '?' => consume!(Question),
+            '$' => consume!(Dollar),
+            '\'' => consume!(Quote), // TODO char parsing
             '#' => consume!(Sharp),
             ':' => {
                 stream.next();
                 match stream.peek() {
                     Some(':') => consume!(DoubleColon),
                     _ => output.push(Colon),
+                }
+            }
+            '.' => {
+                stream.next();
+                match stream.peek() {
+                    Some('.') => {
+                        stream.next();
+                        match stream.peek() {
+                            Some('.') => consume!(DotDotDot),
+                            Some('=') => consume!(DotDotEq),
+                            _ => output.push(DotDot),
+                        }
+                    }
+                    //Some('=') => consume!(DotEq), // This token should never occur in real code
+                    _ => output.push(Dot),
                 }
             }
             // === Paired tokens ===
@@ -204,58 +284,45 @@ where
             // === String literals ===
             // TODO character escaping and other types of literals
             '\"' => {
-                output.push(LiteralStr);
-                stream.next();
+                consume!(LiteralStr);
                 skip_while!(|&&i| i != '\"');
                 stream.next();
             }
             // === Comparison operators ===
             '<' => {
                 stream.next();
-                if let Some(&second_char) = stream.peek() {
-                    match second_char {
-                        '=' => consume!(LessEqual),
-                        '<' => {
-                            stream.next();
-                            if stream.peek() == Some(&'=') {
-                                consume!(BinaryOperatorAssignment(Shl));
-                            } else {
-                                output.push(BinaryOperator(Shl));
-                            }
-                        }
-                        _ => {
-                            output.push(LessThan);
+                match stream.peek() {
+                    Some('=') => consume!(LessEqual),
+                    Some('-') => consume!(LeftArrow),
+                    Some('<') => {
+                        stream.next();
+                        match stream.peek() {
+                            Some('=') => consume!(BinaryOperatorAssignment(Shl)),
+                            _ => output.push(BinaryOperator(Shl)),
                         }
                     }
-                } else {
-                    output.push(LessThan);
+                    _ => output.push(LessThan),
                 }
             }
             '>' => {
                 stream.next();
-                if let Some(&second_char) = stream.peek() {
-                    match second_char {
-                        '=' => consume!(GreaterEqual),
-                        '>' => {
-                            stream.next();
-                            if stream.peek() == Some(&'=') {
-                                consume!(BinaryOperatorAssignment(Shr))
-                            } else {
-                                output.push(BinaryOperator(Shr));
-                            }
-                        }
-                        _ => {
-                            output.push(GreaterThan);
+                match stream.peek() {
+                    Some('=') => consume!(GreaterEqual),
+                    Some('>') => {
+                        stream.next();
+                        match stream.peek() {
+                            Some('=') => consume!(BinaryOperatorAssignment(Shr)),
+                            _ => output.push(BinaryOperator(Shr)),
                         }
                     }
-                } else {
-                    output.push(GreaterThan);
+                    _ => output.push(GreaterThan),
                 }
             }
             '=' => {
                 stream.next();
                 match stream.peek() {
                     Some('=') => consume!(DoubleEqual),
+                    Some('>') => consume!(RightArrow),
                     _ => output.push(Equal),
                 }
             }
