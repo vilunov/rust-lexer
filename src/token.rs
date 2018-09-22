@@ -115,32 +115,44 @@ where
     let mut output = vec![];
 
     while let Some(&c) = stream.peek() {
-        match c {
-            _ if c.is_ascii_digit() => {
-                output.push(LiteralInt);
-                // Skip all digits, we don't store the value anyway
-                while let Some(&c2) = stream.peek() {
-                    if !c2.is_ascii_digit() {
-                        break;
-                    }
+        // === Binary operators ===
+        if let Some(binop) = char_to_binop(c) {
+            stream.next();
+            match stream.peek() {
+                Some('=') => {
+                    output.push(BinaryOperatorAssignment(binop));
                     stream.next();
                 }
-            }
-            _ if char_to_binop(c).eq(Some(binop)) => {
-                stream.next();
-                match stream.peek() {
-                    Some('=') => {
-                        output.push(BinaryOperatorAssignment(binop));
-                        stream.next();
-                    }
-                    _ => {
-                        output.push(BinaryOperator(binop));
-                    }
+                _ => {
+                    output.push(BinaryOperator(binop));
                 }
             }
+            continue;
+        }
+        // === Numerical literals ===
+        if c.is_ascii_digit() {
+            output.push(LiteralInt);
+            while let Some(_) = stream.peek().filter(|i| i.is_ascii_digit()) {
+                stream.next();
+            }
+            continue;
+        }
+        match c {
+            // === String literals ===
+            // TODO character escaping and other types of literals
+            '\"' => {
+                output.push(LiteralStr);
+                stream.next();
+                println!("{}", c);
+                while stream.peek() != Some(&'\"') {
+                    stream.next();
+                }
+                stream.next();
+            }
+            // === Comparison operators ===
             '<' => {
                 stream.next();
-                if stream.peek().eq(Some(second_char)){
+                if let Some(&second_char) = stream.peek() {
                     match second_char {
                         '=' => {
                             output.push(LessEqual);
@@ -148,11 +160,10 @@ where
                         }
                         '<' => {
                             stream.next();
-                            if stream.peek().eq(Some('=')){
+                            if stream.peek() == Some(&'=') {
                                 output.push(BinaryOperatorAssignment(Shl));
                                 stream.next();
-                            }
-                            else{
+                            } else {
                                 output.push(BinaryOperator(Shl));
                             }
                         }
@@ -160,14 +171,13 @@ where
                             output.push(LessThan);
                         }
                     }
-                }
-                else{
+                } else {
                     output.push(LessThan);
                 }
             }
             '>' => {
                 stream.next();
-                if stream.peek().eq(Some(second_char)){
+                if let Some(&second_char) = stream.peek() {
                     match second_char {
                         '=' => {
                             output.push(GreaterEqual);
@@ -175,20 +185,18 @@ where
                         }
                         '>' => {
                             stream.next();
-                            if stream.peek().eq(Some('=')){
+                            if stream.peek() == Some(&'=') {
                                 output.push(BinaryOperatorAssignment(Shr));
                                 stream.next();
+                            } else {
+                                output.push(BinaryOperator(Shr));
                             }
-                                else{
-                                    output.push(BinaryOperator(Shr));
-                                }
                         }
                         _ => {
                             output.push(GreaterThan);
                         }
                     }
-                }
-                else{
+                } else {
                     output.push(GreaterThan);
                 }
             }
