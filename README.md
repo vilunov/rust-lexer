@@ -41,3 +41,16 @@ cargo run
 ```sh
 cargo test
 ```
+
+## Documentation
+
+Requirements:
+- Cargo >= 1.28
+- rustdoc >= 1.29
+
+**Building:**
+```sh
+cargo doc
+```
+
+The documentation index will be located at `target/doc/rust_lexer/index.html`
