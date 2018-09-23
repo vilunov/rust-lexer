@@ -2,6 +2,12 @@
 
 This is the delivery for the second homework assignment of Compilers Construction of Innopolis University, Fall 2018
 
+## Usage
+
+- Place the source of your program in file `in.txt`
+- Run the tokenizer using by one of instructions below
+- Find the list of tokens in file `out.txt`
+
 ##  Running in Docker
 
 Requirements:
@@ -35,4 +41,3 @@ cargo run
 ```sh
 cargo test
 ```
-
