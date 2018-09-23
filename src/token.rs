@@ -178,12 +178,18 @@ where
         }
         Some('\\') => {
             stream.next();
-            let char = match stream.peek() {
+            let c = match stream.peek().cloned() {
                 Some(c) => c,
                 None => return false,
             };
-            match char {
-                'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' => true,
+            match c {
+                'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' | 'u' | 'x' => true,
+                '\n' if delimiter == '"' => {
+                    while stream.peek().cloned().filter(|i| i.is_ascii_whitespace()).is_some() {
+                        stream.next();
+                    }
+                    true
+                }
                 _ => false,
             }
         }

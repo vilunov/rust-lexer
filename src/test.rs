@@ -21,7 +21,7 @@ const TESTS: &[TestCase] = &[
         ],
     ),
     TestCase(
-        "\"This is a bucket!\"+\"Dear\ngod\"",
+        "\"This is a bucket!\"+\"Dear\\ngod\"",
         &[LiteralStr, BinaryOperator(Plus), LiteralStr, Eof],
     ),
     TestCase(
@@ -113,7 +113,6 @@ fn test_self() {
 }
 
 #[test]
-#[ignore]
 fn test_rustc() {
     test_on_folder("test");
 }
