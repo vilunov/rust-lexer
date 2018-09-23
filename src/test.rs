@@ -77,6 +77,7 @@ const TESTS: &[TestCase] = &[
             Semicolon,
         ],
     ),
+
     TestCase(
         "fn kek<'cool_lifetyme_1337, T>(shrek: & 'cool_lifetyme_1337 mut T) -> T {}",
         &[
@@ -110,6 +111,144 @@ const TESTS: &[TestCase] = &[
             Right(Brace),
         ],
     ),
+    TestCase(
+        "  let mut a = 3;",
+        &[
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Equal,
+            Whitespace,
+            LiteralInt,
+            Semicolon
+        ]
+    ),
+    TestCase(
+        "let mut vec = Vec::new(   );",
+        &[
+            Identifier,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Equal,
+            Whitespace,
+            Identifier,
+            DoubleColon,
+            Identifier,
+            Left(Parenthesis),
+            Whitespace,
+            Right(Parenthesis),
+            Semicolon
+        ]
+    ),
+    TestCase(
+                "let vec = vec![0; 5];\n
+                while let Some(top) = stack.pop() {\n// Prints 3, 2, 1\n
+                println!(\"{}\", top);\n
+                }"
+        ,
+        &[
+            Identifier,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Equal,
+            Whitespace,
+            Identifier,
+            Exclamation,
+            Left(Bracket),
+            LiteralInt,
+            Semicolon,
+            Whitespace,
+            LiteralInt,
+            Right(Bracket),
+            Semicolon,
+            Whitespace,
+
+            Identifier,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Identifier,
+            Left(Parenthesis),
+            Identifier,
+            Right(Parenthesis),
+            Whitespace,
+            Equal,
+            Whitespace,
+            Identifier,
+            Dot,
+            Identifier,
+            Left(Parenthesis),
+            Right(Parenthesis),
+            Whitespace,
+            Left(Brace),
+            Whitespace,
+            Comment,
+            Whitespace,
+
+            Identifier,
+            Exclamation,
+            Left(Parenthesis),
+            LiteralStr,
+            Comma,
+            Whitespace,
+            Identifier,
+            Right(Parenthesis),
+            Semicolon,
+            Whitespace,
+
+            Right(Brace)
+        ]
+    ),
+    TestCase(
+        "2-+6*7^311231;\n",
+        &[
+            LiteralInt,
+            BinaryOperator(Minus),
+            BinaryOperator(Plus),
+            LiteralInt,
+            BinaryOperator(Star),
+            LiteralInt,
+            BinaryOperator(Caret),
+            LiteralInt,
+            Semicolon,
+            Whitespace
+        ]
+    ), TestCase(
+        "a<<=(2|643);\n
+        b>>=(234242&(2424234%0))",
+        &[
+            Identifier,
+            BinaryOperatorAssignment(Shl),
+            Left(Parenthesis),
+            LiteralInt,
+            BinaryOperator(Or),
+            LiteralInt,
+            Right(Parenthesis),
+            Semicolon,
+            Whitespace,
+
+            Identifier,
+            BinaryOperatorAssignment(Shr),
+            Left(Parenthesis),
+            LiteralInt,
+            BinaryOperator(And),
+            Left(Parenthesis),
+            LiteralInt,
+            BinaryOperator(Percent),
+            LiteralInt,
+            Right(Parenthesis),
+            Right(Parenthesis)
+        ]
+    )
+
 ];
 
 fn tokenize(input: &str) -> Vec<Token> {
