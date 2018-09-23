@@ -337,7 +337,6 @@ where
                     Some('\'') => panic!("You can't simply put two single quotes in a row"),
                     // The character is not the start of a lifetime identifier, it is a char literal
                     Some(_) => assert!(read_char(&mut stream, '\'')),
-                    Some(_) => assert!(read_char(&mut stream, '\'')),
                     None => panic!("EOF after opening quote"),
                 }
             }

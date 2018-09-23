@@ -113,6 +113,7 @@ fn test_self() {
 }
 
 #[test]
+#[ignore]
 fn test_rustc() {
     test_on_folder("test");
 }
