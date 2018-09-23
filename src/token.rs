@@ -185,7 +185,12 @@ where
             match c {
                 'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' | 'u' | 'x' => true,
                 '\n' if delimiter == '"' => {
-                    while stream.peek().cloned().filter(|i| i.is_ascii_whitespace()).is_some() {
+                    while stream
+                        .peek()
+                        .cloned()
+                        .filter(|i| i.is_ascii_whitespace())
+                        .is_some()
+                    {
                         stream.next();
                     }
                     true
