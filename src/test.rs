@@ -6,10 +6,7 @@ use token::*;
 struct TestCase(&'static str, &'static [Token]);
 
 const TESTS: &[TestCase] = &[
-    TestCase(
-        "255+1488",
-        &[LiteralInt, BinaryOperator(Plus), LiteralInt, Eof],
-    ),
+    TestCase("255+1488", &[LiteralInt, BinaryOperator(Plus), LiteralInt]),
     TestCase(
         "<>=<<=1",
         &[
@@ -17,12 +14,11 @@ const TESTS: &[TestCase] = &[
             GreaterEqual,
             BinaryOperatorAssignment(Shl),
             LiteralInt,
-            Eof,
         ],
     ),
     TestCase(
         "\"This is a bucket!\"+\"Dear\\ngod\"",
-        &[LiteralStr, BinaryOperator(Plus), LiteralStr, Eof],
+        &[LiteralStr, BinaryOperator(Plus), LiteralStr],
     ),
     TestCase(
         "- = -====",
@@ -34,7 +30,6 @@ const TESTS: &[TestCase] = &[
             BinaryOperatorAssignment(Minus),
             DoubleEqual,
             Equal,
-            Eof,
         ],
     ),
     TestCase(
@@ -48,12 +43,11 @@ const TESTS: &[TestCase] = &[
             LiteralInt,
             BinaryOperatorAssignment(Plus),
             LiteralInt,
-            Eof,
         ],
     ),
     TestCase(
         "2+/* block comment */3",
-        &[LiteralInt, BinaryOperator(Plus), Comment, LiteralInt, Eof],
+        &[LiteralInt, BinaryOperator(Plus), Comment, LiteralInt],
     ),
     TestCase(
         "struct TestCase(&'static str, &'static [Token]);",
@@ -76,15 +70,18 @@ const TESTS: &[TestCase] = &[
             Right(Bracket),
             Right(Parenthesis),
             Semicolon,
-            Eof,
         ],
     ),
 ];
 
+fn tokenize(input: &str) -> Vec<Token> {
+    Tokenizer::new(input.chars()).collect()
+}
+
 #[test]
 fn test_custom_positive() {
     for TestCase(input, output) in TESTS {
-        let tokens = tokenize(input.chars());
+        let tokens = tokenize(&input);
         assert_eq!(tokens, *output);
         println!("Expression {} tokenized successfully!", input);
     }
@@ -101,8 +98,7 @@ fn test_on_folder(folder_name: &str) {
     {
         println!("Tokenizing file {:?}", entry);
         let contents = read_to_string(entry).unwrap();
-        let tokens = tokenize(contents.chars());
-        assert_eq!(tokens.last(), Some(&Eof));
+        let tokens = tokenize(&contents);
         println!("Tokenized into: {:#?}", tokens);
     }
 }

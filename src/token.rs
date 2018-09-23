@@ -1,5 +1,3 @@
-use std::iter::Peekable;
-
 /// Token which is usually paired with another token, i.e. is either left or right
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum PairedToken {
@@ -155,142 +153,175 @@ fn is_ident_start(c: char) -> bool {
 }
 
 /// This character is eligible to be identifier's non-first char
-fn is_ident_char(c: &&char) -> bool {
-    let c = **c;
+fn is_ident_char(c: char) -> bool {
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
     // || (c > '\x7f' && c.is_xid_continue())
 }
 
-/// Tries to read a char from the stream as it would be in literals
-///
-/// Returns true if succeeded in reading a char
-fn read_char<S>(stream: &mut Peekable<S>, delimiter: char) -> bool
-where
-    S: Iterator<Item = char>,
-{
-    let val = match stream.peek() {
-        Some(&c) if (c == '\t' || c == '\r' || c == '\n' || c == '\'') && delimiter == '\'' => {
-            false
-        }
-        Some('\r') => {
-            stream.next();
-            stream.peek() == Some(&'\n')
-        }
-        Some('\\') => {
-            stream.next();
-            let c = match stream.peek().cloned() {
-                Some(c) => c,
-                None => return false,
-            };
-            match c {
-                'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' | 'u' | 'x' => true,
-                '\n' if delimiter == '"' => {
-                    while stream
-                        .peek()
-                        .cloned()
-                        .filter(|i| i.is_ascii_whitespace())
-                        .is_some()
-                    {
-                        stream.next();
-                    }
-                    true
-                }
-                _ => false,
-            }
-        }
-        Some(_) => true,
-        None => false,
-    };
-    stream.next();
-    val
+pub struct Tokenizer<S> {
+    iter: S,
+    pos: usize,
+    cur: Option<char>,
 }
 
-/// Tokenize the stream of incoming source code
-///
-/// # Panics
-///
-/// When the tokenizer encounters an unexpected character
-pub fn tokenize<S>(stream: S) -> Vec<Token>
+impl<S> Tokenizer<S>
 where
     S: Iterator<Item = char>,
 {
-    use self::BinaryOperator::*;
-    use self::PairedToken::*;
-    use self::Token::*;
-
-    let mut stream = stream.peekable();
-    let mut output = vec![];
-
-    macro_rules! consume {
-        ($token: expr) => {{
-            stream.next();
-            output.push($token);
-        }};
+    pub fn new(mut iter: S) -> Self {
+        let cur = iter.next();
+        Self { iter, pos: 0, cur }
     }
-    macro_rules! skip_while {
-        ($predicate: expr) => {
-            while stream.peek().filter($predicate).is_some() {
-                stream.next();
+
+    fn adv(&mut self) {
+        self.cur = self.iter.next();
+        self.pos += 1;
+    }
+
+    fn skip_chars<F>(&mut self, mut predicate: F)
+    where
+        F: FnMut(char) -> bool,
+    {
+        while let Some(c) = self.cur {
+            if !predicate(c) {
+                break;
             }
+            self.adv();
+        }
+    }
+
+    fn skip_whitespace(&mut self) {
+        self.skip_chars(|i| i.is_ascii_whitespace());
+    }
+
+    fn next(&mut self) -> Option<char> {
+        self.adv();
+        self.cur
+    }
+
+    /// Tries to read a char from the stream as it would be in literals
+    ///
+    /// Returns true if succeeded in reading a char
+    fn read_char(&mut self, delimiter: char) -> bool {
+        let val = match self.cur {
+            Some(c) if (c == '\t' || c == '\r' || c == '\n' || c == '\'') && delimiter == '\'' => {
+                false
+            }
+            Some('\r') => self.next() == Some('\n'),
+            Some('\\') => {
+                let c = match self.next() {
+                    Some(c) => c,
+                    None => return false,
+                };
+                match c {
+                    'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' => true,
+                    'u' => {
+                        assert_eq!(self.next(), Some('{'));
+                        self.adv();
+                        self.skip_chars(|c| c.is_ascii_hexdigit());
+                        assert_eq!(self.cur, Some('}'));
+                        true
+                    }
+                    'x' => {
+                        assert!(self.next().unwrap().is_ascii_hexdigit());
+                        assert!(self.next().unwrap().is_ascii_hexdigit());
+                        true
+                    }
+                    '\n' if delimiter == '"' => {
+                        self.skip_whitespace();
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            Some(_) => true,
+            None => false,
         };
+        self.adv();
+        val
     }
+}
 
-    while let Some(&c) = stream.peek() {
+impl<S> Iterator for Tokenizer<S>
+where
+    S: Iterator<Item = char>,
+{
+    type Item = Token;
+
+    /// Retrieve the next token of incoming source code
+    ///
+    /// # Panics
+    ///
+    /// When the tokenizer encounters an unexpected character
+    fn next(&mut self) -> Option<Token> {
+        use self::BinaryOperator::*;
+        use self::PairedToken::*;
+        use self::Token::*;
+
+        macro_rules! consume {
+            ($token: expr) => {{
+                self.adv();
+                $token
+            }};
+        }
+
+        let cur = match self.cur {
+            Some(c) => c,
+            None => return None,
+        };
+
         // === Binary operators ===
-        if let Some(binop) = char_to_binop(c) {
-            stream.next();
-            match stream.peek() {
+        if let Some(binop) = char_to_binop(cur) {
+            return Some(match self.next() {
                 Some('=') => consume!(BinaryOperatorAssignment(binop)),
-                _ => output.push(BinaryOperator(binop)),
-            }
-            continue;
+                _ => BinaryOperator(binop),
+            });
         }
         // === Numerical literals ===
         // TODO floats; _; types - u8, f64, etc
-        if c.is_ascii_digit() {
-            output.push(LiteralInt);
-            skip_while!(|i| i.is_ascii_digit());
-            continue;
+        if cur.is_ascii_digit() {
+            self.skip_chars(|i| i.is_ascii_digit());
+            return Some(LiteralInt);
         }
-        match c {
-            // === Identifiers ===
-            _ if is_ident_start(c) => {
-                consume!(Identifier);
-                skip_while!(is_ident_char);
-            }
+        // === Identifiers ===
+        if is_ident_start(cur) {
+            self.skip_chars(is_ident_char);
+            return Some(Identifier);
+        }
+
+        Some(match cur {
             // === Special case for operators ===
             // --- Needed to handle comments
             '/' => {
-                stream.next();
-                match stream.peek() {
+                match self.next() {
                     Some('=') => consume!(BinaryOperatorAssignment(Slash)),
+                    // Block comments
                     Some('*') => {
-                        consume!(Comment);
-                        while let Some(_) = stream.peek() {
-                            skip_while!(|&&i| i != '*');
-                            stream.next();
-                            if let Some(&'/') = stream.peek() {
-                                stream.next();
+                        self.adv();
+                        while let Some(_) = self.cur {
+                            self.skip_chars(|i| i != '*');
+                            self.adv();
+                            if let Some('/') = self.cur {
+                                self.adv();
                                 break;
                             }
                         }
+                        Comment
                     }
+                    // Line comments
                     Some('/') => {
-                        skip_while!(|&&i| i != '\n');
-                        output.push(Comment);
+                        self.skip_chars(|i| i != '\n');
+                        Comment
                     }
-                    _ => output.push(BinaryOperator(Slash)),
+                    _ => BinaryOperator(Slash),
                 }
             }
             // --- Needed to handle right arrows
-            '-' => {
-                stream.next();
-                match stream.peek() {
-                    Some('=') => consume!(BinaryOperatorAssignment(Minus)),
-                    Some('>') => consume!(RightArrow),
-                    _ => output.push(BinaryOperator(Minus)),
-                }
-            }
+            '-' => match self.next() {
+                Some('=') => consume!(BinaryOperatorAssignment(Minus)),
+                Some('>') => consume!(RightArrow),
+                _ => BinaryOperator(Minus),
+            },
             // === Structurals ===
             ',' => consume!(Comma),
             ';' => consume!(Semicolon),
@@ -298,56 +329,52 @@ where
             '?' => consume!(Question),
             '$' => consume!(Dollar),
             '#' => consume!(Sharp),
-            ':' => {
-                stream.next();
-                match stream.peek() {
-                    Some(':') => consume!(DoubleColon),
-                    _ => output.push(Colon),
-                }
-            }
+            ':' => match self.next() {
+                Some(':') => consume!(DoubleColon),
+                _ => Colon,
+            },
             '.' => {
-                stream.next();
-                match stream.peek() {
-                    Some('.') => {
-                        stream.next();
-                        match stream.peek() {
-                            Some('.') => consume!(DotDotDot),
-                            Some('=') => consume!(DotDotEq),
-                            _ => output.push(DotDot),
-                        }
-                    }
+                match self.next() {
+                    Some('.') => match self.next() {
+                        Some('.') => consume!(DotDotDot),
+                        Some('=') => consume!(DotDotEq),
+                        _ => DotDot,
+                    },
                     //Some('=') => consume!(DotEq), // This token should never occur in real code
-                    _ => output.push(Dot),
+                    _ => Dot,
                 }
             }
-            // === Lifetimes and character literas ===
+            // === Lifetimes and character literals ===
             '\'' => {
-                stream.next();
-                match stream.peek() {
+                match self.next() {
                     // At this point we check whether the first symbol could be the start of lifetime
-                    Some(&c) if is_ident_start(c) => {
-                        stream.next();
-                        match stream.peek().cloned() {
+                    Some(c) if is_ident_start(c) => {
+                        match self.next() {
                             // If it is and the next symbol is a single quote, then it is a char literal
                             Some('\'') => consume!(LiteralChar),
                             // If it's not, then it is a lifetime identifier
-                            Some(c2) if is_ident_char(&&c2) => {
-                                skip_while!(is_ident_char);
+                            Some(c2) if is_ident_char(c2) => {
+                                self.skip_chars(is_ident_char);
                                 // Lifetimes can't have a closing quote at the end
                                 // The user could mistakenly try to create a char literal with multiple codepoints
                                 assert_ne!(
-                                    stream.peek(),
-                                    Some(&'\''),
+                                    self.cur,
+                                    Some('\''),
                                     "Char literal must have at most one codepoint"
                                 );
-                                output.push(IdentifierLifetime)
+                                IdentifierLifetime
                             }
-                            _ => output.push(IdentifierLifetime),
+                            _ => IdentifierLifetime,
                         }
                     }
                     Some('\'') => panic!("You can't simply put two single quotes in a row"),
                     // The character is not the start of a lifetime identifier, it is a char literal
-                    Some(_) => assert!(read_char(&mut stream, '\'')),
+                    Some(_) => {
+                        assert!(self.read_char('\''));
+                        assert_eq!(self.cur, Some('\''), "Expected single quote");
+                        self.next();
+                        LiteralChar
+                    }
                     None => panic!("EOF after opening quote"),
                 }
             }
@@ -361,59 +388,41 @@ where
             // === String literals ===
             // TODO other types of literals
             '\"' => {
-                consume!(LiteralStr);
-                while stream.peek() != Some(&'"') {
-                    assert!(read_char(&mut stream, '"'));
+                self.adv();
+                while self.cur != Some('"') {
+                    assert!(self.read_char('"'));
                 }
-                stream.next();
+                self.adv();
+                LiteralStr
             }
-            // === Comparison operators ===
-            '<' => {
-                stream.next();
-                match stream.peek() {
-                    Some('=') => consume!(LessEqual),
-                    Some('-') => consume!(LeftArrow),
-                    Some('<') => {
-                        stream.next();
-                        match stream.peek() {
-                            Some('=') => consume!(BinaryOperatorAssignment(Shl)),
-                            _ => output.push(BinaryOperator(Shl)),
-                        }
-                    }
-                    _ => output.push(LessThan),
-                }
+            // === Comparison operators and assignment ===
+            '<' => match self.next() {
+                Some('=') => consume!(LessEqual),
+                Some('-') => consume!(LeftArrow),
+                Some('<') => match self.next() {
+                    Some('=') => consume!(BinaryOperatorAssignment(Shl)),
+                    _ => BinaryOperator(Shl),
+                },
+                _ => LessThan,
+            },
+            '>' => match self.next() {
+                Some('=') => consume!(GreaterEqual),
+                Some('>') => match self.next() {
+                    Some('=') => consume!(BinaryOperatorAssignment(Shr)),
+                    _ => BinaryOperator(Shr),
+                },
+                _ => GreaterThan,
+            },
+            '=' => match self.next() {
+                Some('=') => consume!(DoubleEqual),
+                Some('>') => consume!(RightArrow),
+                _ => Equal,
+            },
+            _ if cur.is_ascii_whitespace() => {
+                self.skip_whitespace();
+                Whitespace
             }
-            '>' => {
-                stream.next();
-                match stream.peek() {
-                    Some('=') => consume!(GreaterEqual),
-                    Some('>') => {
-                        stream.next();
-                        match stream.peek() {
-                            Some('=') => consume!(BinaryOperatorAssignment(Shr)),
-                            _ => output.push(BinaryOperator(Shr)),
-                        }
-                    }
-                    _ => output.push(GreaterThan),
-                }
-            }
-            '=' => {
-                stream.next();
-                match stream.peek() {
-                    Some('=') => consume!(DoubleEqual),
-                    Some('>') => consume!(RightArrow),
-                    _ => output.push(Equal),
-                }
-            }
-            ' ' | '\n' if c.is_ascii_whitespace() => {
-                consume!(Whitespace);
-                skip_while!(|i| i.is_ascii_whitespace());
-            }
-
-            _ => panic!("Unexpected character {}", c),
-        }
+            _ => panic!("Unexpected character {} at location {}", cur, self.pos),
+        })
     }
-    output.push(Eof);
-
-    output
 }
