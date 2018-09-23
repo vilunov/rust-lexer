@@ -3,5 +3,5 @@ name = "rust-lexer"
 version = "0.1.0"
 authors = ["Nikita Vilunov <nikitaoryol@gmail.com>", "Nikolay Gaivoronskiy <cezarnik3@gmail.com>"]
 
-[dependencies]
-regex = "1.0.5"
+[profile.release]
+lto = true

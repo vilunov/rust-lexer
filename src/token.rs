@@ -90,7 +90,7 @@ pub enum Token {
     DotDotEq,
 
     // Operators
-    /// Binary operator, e.g. `+`
+    /// Binary operator, e.g. `+`. BinaryOperator(And) is also used for references
     BinaryOperator(BinaryOperator),
     /// Binary operator with assignment, e.g. `+=`
     BinaryOperatorAssignment(BinaryOperator),
@@ -118,15 +118,17 @@ pub enum Token {
     DoubleOr,
 
     // Literals
+    /// Integer and float literal
     LiteralInt,
+    /// String literal
     LiteralStr,
+    /// Character literal
     LiteralChar,
 
+    /// Function, variable or struct name or a keyword
     Identifier,
+    /// Lifetime identifier, including `'_` and `'static`
     IdentifierLifetime,
-
-    /// End of stream
-    Eof,
 }
 
 /// Try to convert a char into a binary operator
@@ -158,6 +160,7 @@ fn is_ident_char(c: char) -> bool {
     // || (c > '\x7f' && c.is_xid_continue())
 }
 
+/// Stream of tokens build from the iterator of characters
 pub struct Tokenizer<S> {
     iter: S,
     pos: usize,
@@ -178,6 +181,7 @@ where
         self.pos += 1;
     }
 
+    /// Skip all chars for which `predicate` is true
     fn skip_chars<F>(&mut self, mut predicate: F)
     where
         F: FnMut(char) -> bool,
@@ -190,10 +194,12 @@ where
         }
     }
 
+    /// Skip all whitespace characters
     fn skip_whitespace(&mut self) {
         self.skip_chars(|i| i.is_ascii_whitespace());
     }
 
+    /// Advance and return the next character
     fn next(&mut self) -> Option<char> {
         self.adv();
         self.cur
@@ -201,44 +207,30 @@ where
 
     /// Tries to read a char from the stream as it would be in literals
     ///
-    /// Returns true if succeeded in reading a char
-    fn read_char(&mut self, delimiter: char) -> bool {
-        let val = match self.cur {
-            Some(c) if (c == '\t' || c == '\r' || c == '\n' || c == '\'') && delimiter == '\'' => {
-                false
-            }
-            Some('\r') => self.next() == Some('\n'),
-            Some('\\') => {
-                let c = match self.next() {
-                    Some(c) => c,
-                    None => return false,
-                };
-                match c {
-                    'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' => true,
-                    'u' => {
-                        assert_eq!(self.next(), Some('{'));
-                        self.adv();
-                        self.skip_chars(|c| c.is_ascii_hexdigit());
-                        assert_eq!(self.cur, Some('}'));
-                        true
-                    }
-                    'x' => {
-                        assert!(self.next().unwrap().is_ascii_hexdigit());
-                        assert!(self.next().unwrap().is_ascii_hexdigit());
-                        true
-                    }
-                    '\n' if delimiter == '"' => {
-                        self.skip_whitespace();
-                        true
-                    }
-                    _ => false,
+    /// # Panics
+    /// When the input character is incorrect
+    fn read_char(&mut self, delimiter: char) {
+        match self.cur.unwrap() {
+            c if c == '\t' || c == '\r' || c == '\n' || c == '\'' => assert_ne!(delimiter, '\''),
+            '\r' => assert_eq!(self.next(), Some('\n')),
+            '\\' => match self.next().unwrap() {
+                'n' | 'r' | 't' | '\\' | '\'' | '"' | '0' => {}
+                'u' => {
+                    assert_eq!(self.next(), Some('{'));
+                    self.adv();
+                    self.skip_chars(|c| c.is_ascii_hexdigit());
+                    assert_eq!(self.cur, Some('}'));
                 }
-            }
-            Some(_) => true,
-            None => false,
+                'x' => {
+                    assert!(self.next().unwrap().is_ascii_hexdigit());
+                    assert!(self.next().unwrap().is_ascii_hexdigit());
+                }
+                '\n' if delimiter == '"' => self.skip_whitespace(),
+                c => panic!("Unexpected character {}", c),
+            },
+            _ => {}
         };
         self.adv();
-        val
     }
 }
 
@@ -297,11 +289,9 @@ where
                     Some('=') => consume!(BinaryOperatorAssignment(Slash)),
                     // Block comments
                     Some('*') => {
-                        self.adv();
-                        while let Some(_) = self.cur {
+                        while let Some(_) = self.next() {
                             self.skip_chars(|i| i != '*');
-                            self.adv();
-                            if let Some('/') = self.cur {
+                            if let Some('/') = self.next() {
                                 self.adv();
                                 break;
                             }
@@ -325,10 +315,13 @@ where
             // === Structurals ===
             ',' => consume!(Comma),
             ';' => consume!(Semicolon),
-            '!' => consume!(Exclamation),
             '?' => consume!(Question),
             '$' => consume!(Dollar),
             '#' => consume!(Sharp),
+            '!' => match self.next() {
+                Some('=') => consume!(NotEqual),
+                _ => Exclamation,
+            },
             ':' => match self.next() {
                 Some(':') => consume!(DoubleColon),
                 _ => Colon,
@@ -370,7 +363,7 @@ where
                     Some('\'') => panic!("You can't simply put two single quotes in a row"),
                     // The character is not the start of a lifetime identifier, it is a char literal
                     Some(_) => {
-                        assert!(self.read_char('\''));
+                        self.read_char('\'');
                         assert_eq!(self.cur, Some('\''), "Expected single quote");
                         self.next();
                         LiteralChar
@@ -390,7 +383,7 @@ where
             '\"' => {
                 self.adv();
                 while self.cur != Some('"') {
-                    assert!(self.read_char('"'));
+                    self.read_char('"');
                 }
                 self.adv();
                 LiteralStr
