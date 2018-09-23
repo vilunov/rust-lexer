@@ -8,11 +8,16 @@ struct TestCase(&'static str, &'static [Token]);
 const TESTS: &[TestCase] = &[
     TestCase("255+1488", &[LiteralInt, BinaryOperator(Plus), LiteralInt]),
     TestCase(
-        "<>=<<=1",
+        "<>=<<=1 != ==5",
         &[
             LessThan,
             GreaterEqual,
             BinaryOperatorAssignment(Shl),
+            LiteralInt,
+            Whitespace,
+            NotEqual,
+            Whitespace,
+            DoubleEqual,
             LiteralInt,
         ],
     ),
@@ -73,20 +78,44 @@ const TESTS: &[TestCase] = &[
         ],
     ),
     TestCase(
+        "fn kek<'cool_lifetyme_1337, T>(shrek: & 'cool_lifetyme_1337 mut T) -> T {}",
+        &[
+            Identifier,
+            Whitespace,
+            Identifier,
+            LessThan,
+            IdentifierLifetime,
+            Comma,
+            Whitespace,
+            Identifier,
+            GreaterThan,
+            Left(Parenthesis),
+            Identifier,
+            Colon,
+            Whitespace,
+            BinaryOperator(And),
+            Whitespace,
+            IdentifierLifetime,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Identifier,
+            Right(Parenthesis),
+            Whitespace,
+            RightArrow,
+            Whitespace,
+            Identifier,
+            Whitespace,
+            Left(Brace),
+            Right(Brace),
+        ],
+    ),
+    TestCase(
         "  let mut a = 3;",
         &[
-            Whitespace,
-            Identifier,
-            Whitespace,
-            Identifier,
-            Whitespace,
-            Identifier,
-            Whitespace,
-            Equal,
-            Whitespace,
-            LiteralInt,
-            Semicolon
-        ]
+            Whitespace, Identifier, Whitespace, Identifier, Whitespace, Identifier, Whitespace,
+            Equal, Whitespace, LiteralInt, Semicolon,
+        ],
     ),
     TestCase(
         "let mut vec = Vec::new(   );",
@@ -105,15 +134,14 @@ const TESTS: &[TestCase] = &[
             Left(Parenthesis),
             Whitespace,
             Right(Parenthesis),
-            Semicolon
-        ]
+            Semicolon,
+        ],
     ),
     TestCase(
-                "let vec = vec![0; 5];\n
+        "let vec = vec![0; 5];\n
                 while let Some(top) = stack.pop() {\n// Prints 3, 2, 1\n
                 println!(\"{}\", top);\n
-                }"
-        ,
+                }",
         &[
             Identifier,
             Whitespace,
@@ -131,7 +159,6 @@ const TESTS: &[TestCase] = &[
             Right(Bracket),
             Semicolon,
             Whitespace,
-
             Identifier,
             Whitespace,
             Identifier,
@@ -153,7 +180,6 @@ const TESTS: &[TestCase] = &[
             Whitespace,
             Comment,
             Whitespace,
-
             Identifier,
             Exclamation,
             Left(Parenthesis),
@@ -164,9 +190,8 @@ const TESTS: &[TestCase] = &[
             Right(Parenthesis),
             Semicolon,
             Whitespace,
-
-            Right(Brace)
-        ]
+            Right(Brace),
+        ],
     ),
     TestCase(
         "2-+6*7^311231;\n",
@@ -180,9 +205,10 @@ const TESTS: &[TestCase] = &[
             BinaryOperator(Caret),
             LiteralInt,
             Semicolon,
-            Whitespace
-        ]
-    ), TestCase(
+            Whitespace,
+        ],
+    ),
+    TestCase(
         "a<<=(2|643);\n
         b>>=(234242&(2424234%0))",
         &[
@@ -195,7 +221,6 @@ const TESTS: &[TestCase] = &[
             Right(Parenthesis),
             Semicolon,
             Whitespace,
-
             Identifier,
             BinaryOperatorAssignment(Shr),
             Left(Parenthesis),
@@ -206,10 +231,9 @@ const TESTS: &[TestCase] = &[
             BinaryOperator(Percent),
             LiteralInt,
             Right(Parenthesis),
-            Right(Parenthesis)
-        ]
-    )
-
+            Right(Parenthesis),
+        ],
+    ),
 ];
 
 fn tokenize(input: &str) -> Vec<Token> {

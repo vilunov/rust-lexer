@@ -1,5 +1,3 @@
-extern crate regex;
-
 pub mod token;
 
 fn main() {
